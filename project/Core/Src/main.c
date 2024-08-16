@@ -42,47 +42,164 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 
+uint32_t left_toggles;
+uint32_t right_toggles;
+uint32_t left_last_press_tick;
+uint32_t right_last_press_tick;
+uint32_t stop_toggles;
+uint32_t stop_last_press_tick;
+uint32_t state ;
+uint32_t state2;
+uint32_t state3;
+/*declaramos todas las funciones que vamos a necesitar en nuestro codigo, no las inicializamos en cero ya que no es necesario*/
+
 /* USER CODE BEGIN PV */
-uint32_t left_toggles = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
-/* USER CODE BEGIN PFP */
-void heartbeat (void);
-/* USER CODE END PFP */
 
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
+void heartbeat(void);
+
+/* USER CODE BEGIN PFP */
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == S1_Pin){
+	if (GPIO_Pin == S1_Pin && HAL_GetTick() > (left_last_press_tick + 200)) {
+		if(right_toggles > 0){
+			state = 1;
+		}
+		left_toggles = 0;
+		right_toggles = 0;
+		stop_toggles = 0;
+		HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+		HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, 1);
 		HAL_UART_Transmit(&huart2, "S1\r\n", 4, 10);
-		left_toggles = 6;
-	}
+		if (HAL_GetTick() < (left_last_press_tick + 300)) {
+
+			left_toggles = 0xFFFFFF;
+		} else {
+			left_toggles = 6;
+		}
+		left_last_press_tick = HAL_GetTick();
+
+	} else if (GPIO_Pin == S2_Pin && HAL_GetTick() > (right_last_press_tick + 200)) {
+		if(left_toggles > 0){
+			state2 = 1;
+		}
+		right_toggles = 0;
+		left_toggles = 0;
+		stop_toggles = 0;
+		HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+		HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, 1);
+		HAL_UART_Transmit(&huart2, "S2\r\n", 4, 10);
+		if (HAL_GetTick() < (right_last_press_tick + 300)) {
+			right_toggles = 0xFFFFFF;
+		} else {
+			right_toggles = 6;
+				}
+		right_last_press_tick = HAL_GetTick();
+
+	} else if (GPIO_Pin == S3_Pin && HAL_GetTick() > (stop_last_press_tick + 200)) {
+		if(stop_toggles > 0){
+			state3 = 1;
+		}
+		stop_toggles = 0;
+		right_toggles = 0;
+		left_toggles = 0;
+		HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+		HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, 1);
+		HAL_UART_Transmit(&huart2, "S3\r\n", 4, 10);
+		stop_toggles = 0xFFFFFF;
+		stop_last_press_tick = HAL_GetTick();
+			}
 }
-void heartbeat (void)
+
+/*Esta función maneja las interrupciones generadas por tres botones (S1, S2, S3) que,
+dependiendo de ciertas condiciones temporales, actualizan el estado del sistema.
+Además, controla variables de contar o rastrear los toggles de los botones, ajustando el
+comportamiento según el tiempo entre pulsaciones. También enciende los LEDs (D3, D4)
+y transmite mensajes por UART para indicar qué botón fue presionado.*/
+
+void heartbeat(void)
 {
 	static uint32_t heartbeat_tick = 0;
-	if (heartbeat_tick < HAL_GetTick()){
+	if (heartbeat_tick < HAL_GetTick()) {
 		heartbeat_tick = HAL_GetTick() + 500;
 		HAL_GPIO_TogglePin(D1_GPIO_Port, D1_Pin);
 	}
 }
-
+//esta funcion nos permitira saber si nuestra aplicacion se esta ejecutando
 void turn_signal_left(void)
 {
 	static uint32_t turn_toggle_tick = 0;
-	if (turn_toggle_tick < HAL_GetTick() && left_toggles > 0){
-		turn_toggle_tick = HAL_GetTick() + 500;
-		HAL_GPIO_TogglePin(D3_GPIO_Port, D3_Pin);
-		left_toggles--;
-	}else {
-		HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+	if (turn_toggle_tick < HAL_GetTick()) {
+		if (left_toggles > 0 && state != 1) {
+			turn_toggle_tick = HAL_GetTick() + 500;
+			HAL_GPIO_TogglePin(D3_GPIO_Port, D3_Pin);
+			left_toggles--;
+		} else if(stop_toggles <= 0) {
+			HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+			left_toggles = 0;
+			state = 0;
+	}
 	}
 }
+/*La función turn_signal_left controla una señal de giro hacia la izquierda alternando el estado de un pin
+ con intervalos de 500 ms, mientras la variable left_toggles sea mayor que 0 y
+  el estado no sea 1. Cuando left_toggles llega a 0, la señal se detiene y el pin D3_Pin se
+  mantiene encendido.*/
+
+void turn_signal_right(void)
+{
+	static uint32_t turn_toggle_tick = 0;
+	if (turn_toggle_tick < HAL_GetTick()){
+		if (right_toggles > 0 && state2 != 1) {
+			turn_toggle_tick = HAL_GetTick() + 500;
+			HAL_GPIO_TogglePin(D4_GPIO_Port, D4_Pin);
+			right_toggles--;
+		} else if(stop_toggles <= 0){
+			HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, 1);
+			right_toggles = 0;
+			state2 = 0;
+	}
+	}
+}
+/*La función turn_signal_right controla una señal de giro hacia la derecha alternando el estado de un pin
+ con intervalos de 500 ms, mientras la variable right_toggles sea mayor que 0 y
+  el estado no sea 1. Cuando right_toggles llega a 0, la señal se detiene y el pin D4_Pin se
+  mantiene encendido.*/
+void stationary(void)
+{
+	static uint32_t turn_toggle_tick = 0;
+	if (turn_toggle_tick < HAL_GetTick()){
+		if (stop_toggles > 0 && state3 != 1) {
+			turn_toggle_tick = HAL_GetTick() + 500;
+			HAL_GPIO_TogglePin(D3_GPIO_Port, D3_Pin);
+			HAL_GPIO_TogglePin(D4_GPIO_Port, D4_Pin);
+			stop_toggles--;
+		}  else if (right_toggles <= 0 && left_toggles <= 0){
+			HAL_GPIO_WritePin(D3_GPIO_Port, D3_Pin, 1);
+			HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, 1);
+			stop_toggles = 0;
+			state3 = 0;
+		}
+	}
+}
+/*La función stationary controla un estado de parada o advertencia en el que los pines D3_Pin y D4_Pin
+ parpadean alternativamente con intervalos de 500 ms, mientras la variable stop_toggles sea mayor que
+ 0 y el estado state3 no sea 1. Cuando se agotan las alternancias de stop_toggles, las luces (D3_Pin y D4_Pin)
+ se quedan encendidas de manera constante, lo que simboliza una señal fija de parada. El temporizador
+ turn_toggle_tick asegura que las acciones de parpadeo no se repitan demasiado rápido, manteniendo un ritmo estable.*/
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+
 /* USER CODE END 0 */
 
 /**
@@ -123,10 +240,14 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  heartbeat();
-	  turn_signal_left();
+	      heartbeat();
+		  turn_signal_left();
+		  turn_signal_right();
+		  stationary();
     /* USER CODE BEGIN 3 */
   }
+  /* Aqui es donde se va a realizar un bucle de cada una de las acciones que vamos a requerir una
+   vez que haya cierta interrupcion*/
   /* USER CODE END 3 */
 }
 
@@ -249,6 +370,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : S3_Pin */
+  GPIO_InitStruct.Pin = S3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(S3_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : D4_Pin */
   GPIO_InitStruct.Pin = D4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -257,6 +384,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(D4_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
   HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI1_IRQn);
 
